@@ -1,0 +1,10 @@
+{
+  "platforms": ["android", "apple"],
+  "apple": {
+    "modules": ["VolumeMeasurementModule"],
+    "podspecPath": ["ios/VolumeMeasurementModule.podspec"]
+  },
+  "android": {
+    "modules": ["expo.modules.volumemeasurement.VolumeMeasurementModule"]
+  }
+}
