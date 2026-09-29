@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "POC Volume Finder",
-    "slug": "poc-volume-finder",
-    "scheme": "poc-volume-finder",
+    "name": "Measure APP",
+    "slug": "measure-app",
+    "scheme": "measure-APP",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "bundleIdentifier": "com.aditya350.pocvolumefinder",
+      "bundleIdentifier": "com.ketsc.measureapp",
       "infoPlist": {
         "NSCameraUsageDescription": "Allow POC Volume Finder to use the camera to measure boxes."
       },
@@ -25,7 +25,7 @@
       "permissions": [
         "android.permission.CAMERA"
       ],
-      "package": "com.aditya350.pocvolumefinder"
+      "package": "com.ketsc.measureapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -43,6 +43,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c00604c2-ccc0-496d-8218-3f98b47d0152"
+      }
+    },
+    "owner": "ketsc-limited"
   }
 }
