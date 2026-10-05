@@ -3,6 +3,7 @@ import type { MeasurementShape } from '../measurement/types';
 import type { NormalizedBox } from './cameraOptics';
 
 const AI_API_KEY_STORAGE = '@measure_app_ai_api_key';
+export const DEFAULT_AI_API_KEY = 'AQ.Ab8RN6LVHqz0jCUSIhl_5Yo8GnAtOYcGPfRqxA-FlMTH-hcK8Q';
 
 export type AiObjectDetectionResult = {
   objectName: string;
@@ -18,11 +19,12 @@ export type AiObjectDetectionResult = {
   rationale: string;
 };
 
-export async function getSavedAiApiKey(): Promise<string | null> {
+export async function getSavedAiApiKey(): Promise<string> {
   try {
-    return await AsyncStorage.getItem(AI_API_KEY_STORAGE);
+    const saved = await AsyncStorage.getItem(AI_API_KEY_STORAGE);
+    return saved?.trim() || DEFAULT_AI_API_KEY;
   } catch {
-    return null;
+    return DEFAULT_AI_API_KEY;
   }
 }
 
@@ -35,14 +37,14 @@ export async function saveAiApiKey(apiKey: string): Promise<void> {
 }
 
 /**
- * Sends a captured frame to Google Gemini 1.5/2.0 Flash to identify the object,
+ * Sends a captured frame to Google Gemini Flash to identify the object,
  * classify its geometry, and estimate its physical dimensions.
  */
 export async function identifyObjectWithAiVision(
   base64Image: string,
   customApiKey?: string,
 ): Promise<AiObjectDetectionResult | undefined> {
-  const apiKey = (customApiKey || (await getSavedAiApiKey()))?.trim();
+  const apiKey = (customApiKey || (await getSavedAiApiKey()))?.trim() || DEFAULT_AI_API_KEY;
   if (!apiKey) {
     return undefined;
   }
@@ -50,13 +52,16 @@ export async function identifyObjectWithAiVision(
   // Strip potential data URL prefix
   const cleanBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
-  const prompt = `You are a precision computer vision and 3D geometric measurement engine.
-Analyze this photo taken by a smartphone camera. Look at the primary foreground object in the frame.
+  const prompt = `You are a precision computer vision, spatial AI, and 3D geometric measurement engine.
+Analyze this photo taken by a smartphone camera. Identify the primary foreground object or container in the frame.
+Look closely at the object's real-world identity, category, and standard physical dimensions (e.g. shipping box, soda can, laptop, water bottle, phone, book, carton).
+Calculate realistic physical dimensions in centimeters (width, length, height), its 2D normalized bounding box, and geometric shape classification.
+
 Return a STRICT JSON response with no markdown fences, no preamble, and no explanation:
 {
-  "objectName": "Name of the physical object (e.g. Soda Can, Laptop, Book, Coffee Mug, Box)",
+  "objectName": "Precise name of the physical object (e.g. Shipping Box, Soda Can, Water Bottle, Book, Mobile Phone)",
   "shape": "circle" | "square" | "rectangle" | "cylinder" | "cuboid" | "sphere",
   "shapeCategory": "2d_planar" | "3d_volumetric",
   "boundingBox": { "x": 0.0 to 1.0, "y": 0.0 to 1.0, "width": 0.0 to 1.0, "height": 0.0 to 1.0 },

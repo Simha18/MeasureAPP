@@ -82,9 +82,9 @@ function AutoScanner() {
   // Alternate Solution: Explicit Target Shape Mode (Defaults to cylinder for bottles/cans)
   const [selectedShapeMode, setSelectedShapeMode] = useState<ShapeMode>('cylinder');
 
-  // Optional AI Vision mode
-  const [useAiVision, setUseAiVision] = useState(false);
-  const [aiApiKey, setAiApiKey] = useState('');
+  // AI Vision mode enabled by default with Google Gemini Flash
+  const [useAiVision, setUseAiVision] = useState(true);
+  const [aiApiKey, setAiApiKey] = useState('AQ.Ab8RN6LVHqz0jCUSIhl_5Yo8GnAtOYcGPfRqxA-FlMTH-hcK8Q');
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   // Live detection result
