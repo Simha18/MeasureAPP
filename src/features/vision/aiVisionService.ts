@@ -70,43 +70,76 @@ Return a STRICT JSON response with no markdown fences, no preamble, and no expla
   "rationale": "Short 1-sentence geometric explanation"
 }`;
 
-  try {
-    const response = await fetch(endpoint, {
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  data: cleanBase64,
-                  mimeType: 'image/jpeg',
+  const CANDIDATE_MODELS = [
+    'gemini-flash-latest',
+    'gemini-3.5-flash',
+    'gemini-flash-lite-latest',
+    'gemini-3.8-flash',
+  ];
+
+  let candidateText: string | undefined;
+
+  for (const modelName of CANDIDATE_MODELS) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    try {
+      console.log(`[AI Vision] Sending camera frame to model: ${modelName}...`);
+      const startTime = Date.now();
+
+      const response = await fetch(endpoint, {
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    data: cleanBase64,
+                    mimeType: 'image/jpeg',
+                  },
                 },
-              },
-            ],
+              ],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
           },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
+        }),
+        headers: {
+          'Content-Type': 'application/json',
         },
-      }),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      method: 'POST',
-    });
+        method: 'POST',
+      });
 
-    if (!response.ok) {
-      return undefined;
+      const elapsedMs = Date.now() - startTime;
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.warn(`[AI Vision] ${modelName} returned HTTP ${response.status} (${elapsedMs}ms). Checking fallback...`);
+        // If 503 (high demand) or 429 (rate limit), continue to next model
+        if (response.status === 503 || response.status === 429 || response.status === 404) {
+          continue;
+        }
+        return undefined;
+      }
+
+      const data = await response.json();
+      candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (candidateText) {
+        console.log(`[AI Vision] Success from ${modelName} in ${elapsedMs}ms`);
+        break;
+      }
+    } catch (err) {
+      console.warn(`[AI Vision] Network error on ${modelName}:`, err);
     }
+  }
 
-    const data = await response.json();
-    const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!candidateText) {
-      return undefined;
-    }
+  if (!candidateText) {
+    console.error('[AI Vision] All Gemini candidate models failed or returned empty');
+    return undefined;
+  }
 
+  try {
     const parsed = JSON.parse(candidateText);
 
     // Validate shape
@@ -131,7 +164,7 @@ Return a STRICT JSON response with no markdown fences, no preamble, and no expla
           ? '2d_planar'
           : '3d_volumetric';
 
-    return {
+    const result: AiObjectDetectionResult = {
       boundingBox: {
         height: Math.max(0.05, Math.min(0.95, Number(parsed.boundingBox?.height) || 0.4)),
         width: Math.max(0.05, Math.min(0.95, Number(parsed.boundingBox?.width) || 0.4)),
@@ -149,7 +182,11 @@ Return a STRICT JSON response with no markdown fences, no preamble, and no expla
       shape,
       shapeCategory,
     };
-  } catch {
+
+    console.log(`[AI Vision] Result: ${result.objectName} (${result.shape}) -> ${result.dimensionsCm.length} x ${result.dimensionsCm.width} x ${result.dimensionsCm.height} cm`);
+    return result;
+  } catch (err) {
+    console.error('[AI Vision] Exception during visual reasoning:', err);
     return undefined;
   }
 }

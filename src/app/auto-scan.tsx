@@ -169,7 +169,7 @@ function AutoScanner() {
       if (!isAnalyzing) {
         void performDetection();
       }
-    }, 1800);
+    }, 3500);
 
     return () => clearInterval(interval);
   }, [cameraReady, isAnalyzing, isContinuousScan, performDetection]);
