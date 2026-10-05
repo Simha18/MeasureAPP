@@ -23,6 +23,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" options={{ title: 'Home' }} />
         <Stack.Screen name="calibration" options={{ title: 'Calibration Test' }} />
         <Stack.Screen name="measure" options={{ title: 'Measure' }} />
+        <Stack.Screen name="auto-scan" options={{ title: 'Smart Shape Scanner' }} />
         <Stack.Screen name="scan" options={{ title: 'Box Edge Assist' }} />
         <Stack.Screen name="smart-scan" options={{ title: 'AR Measurement' }} />
         <Stack.Screen name="photo-measure" options={{ title: 'Measure Dimensions' }} />

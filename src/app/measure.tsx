@@ -13,8 +13,19 @@ export default function MeasureScreen() {
   const outline = shape === 'polygon_prism' || shape === 'sectioned';
   const canAr = Boolean(capabilities?.arSupported && capabilities.nativeMeasurementAvailable && supportsMeasurementAnchors);
   return <Screen>
-    <SectionHeader title="What are you measuring?" subtitle="Choose the closest shape, then a method suited to the object and your device." />
-    <OptionSelector label="Object shape" value={shape} onChange={setShape}
+    <SectionHeader title="What are you measuring?" subtitle="Auto-detect geometry with the camera or choose a shape below." />
+
+    <View style={[styles.card, { backgroundColor: '#0F172A', borderColor: '#38BDF8', borderWidth: 1.5 }]}>
+      <Text style={[styles.step, { color: '#38BDF8' }]}>RECOMMENDED: AUTO SHAPE DETECTION</Text>
+      <Text style={[styles.title, { color: '#FFFFFF' }]}>Auto-Detect Shape & Dimensions</Text>
+      <Text style={[styles.body, { color: '#94A3B8' }]}>
+        Point the camera at any physical object. The system automatically classifies whether it is a Square,
+        Rectangle, Cylinder, Circle, or Box, and calculates Height, Width, Radius, Perimeter, Area & Volume.
+      </Text>
+      <PrimaryButton label="⚡ Launch Smart Shape Scanner" onPress={() => router.push('/auto-scan' as Href)} />
+    </View>
+
+    <OptionSelector label="Or manually select an object shape" value={shape} onChange={setShape}
       options={(Object.keys(shapeLabels) as MeasurementShape[]).map(value => ({ value, label: shapeLabels[value] }))} />
     <View style={styles.card}>
       <Text style={styles.step}>{outline ? 'WALK AROUND THE OBJECT' : 'GUIDED AR MEASUREMENT'}</Text>

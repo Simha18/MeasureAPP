@@ -5,17 +5,35 @@ import type { Measurement, WorldPoint3D } from '../types';
 type WireModel = Pick<Measurement, 'shape' | 'dimensions' | 'model'>;
 function modelSections(measurement: WireModel): WorldPoint3D[][] {
   if (measurement.model?.sections?.length) return measurement.model.sections;
-  const { lengthMeters: l, widthMeters: w, heightMeters: h } = measurement.dimensions;
-  if (measurement.shape === 'cuboid') return [0, h].map(y => [
-    { xMeters: 0, yMeters: y, zMeters: 0 }, { xMeters: l, yMeters: y, zMeters: 0 },
-    { xMeters: l, yMeters: y, zMeters: w }, { xMeters: 0, yMeters: y, zMeters: w },
-  ]);
+  const { lengthMeters: l, widthMeters: w, heightMeters: rawH } = measurement.dimensions;
+  const h = Math.max(0, rawH);
+  if (measurement.shape === 'cuboid') {
+    return [0, Math.max(0.01, h)].map(y => [
+      { xMeters: 0, yMeters: y, zMeters: 0 }, { xMeters: l, yMeters: y, zMeters: 0 },
+      { xMeters: l, yMeters: y, zMeters: w }, { xMeters: 0, yMeters: y, zMeters: w },
+    ]);
+  }
+  if (measurement.shape === 'square' || measurement.shape === 'rectangle' || measurement.shape === 'polygon') {
+    const yLevels = h > 0.01 ? [0, h] : [0];
+    return yLevels.map(y => [
+      { xMeters: 0, yMeters: y, zMeters: 0 }, { xMeters: l, yMeters: y, zMeters: 0 },
+      { xMeters: l, yMeters: y, zMeters: w }, { xMeters: 0, yMeters: y, zMeters: w },
+    ]);
+  }
+  if (measurement.shape === 'circle') {
+    return [Array.from({ length: 24 }, (_, i) => ({
+      xMeters: l / 2 + Math.cos(i * Math.PI / 12) * l / 2,
+      yMeters: 0,
+      zMeters: w / 2 + Math.sin(i * Math.PI / 12) * w / 2,
+    }))];
+  }
+  const effectiveH = Math.max(0.01, h || (l + w) / 2);
   return Array.from({ length: 9 }, (_, j) => {
     const t = j / 8;
     const scale = measurement.shape === 'cone' ? 1 - t : measurement.shape === 'cylinder' ? 1 : Math.sqrt(Math.max(0, 1 - (2 * t - 1) ** 2));
     return Array.from({ length: 24 }, (_, i) => ({
       xMeters: l / 2 + Math.cos(i * Math.PI / 12) * l / 2 * scale,
-      yMeters: t * h,
+      yMeters: t * effectiveH,
       zMeters: w / 2 + Math.sin(i * Math.PI / 12) * w / 2 * scale,
     }));
   });

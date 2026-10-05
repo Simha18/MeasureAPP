@@ -10,7 +10,9 @@ export type CameraPreviewCaptureOptions = Pick<
   'base64' | 'exif' | 'maxDownsampling' | 'quality' | 'skipProcessing'
 >;
 
-export type CameraSnapshot = Pick<CameraCapturedPicture, 'height' | 'uri' | 'width'>;
+export type CameraSnapshot = Pick<CameraCapturedPicture, 'height' | 'uri' | 'width'> & {
+  base64?: string;
+};
 
 export type CameraPreviewHandle = {
   captureFrame: (options?: CameraPreviewCaptureOptions) => Promise<CameraSnapshot | undefined>;

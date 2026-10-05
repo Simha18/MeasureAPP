@@ -3,20 +3,41 @@ import type { MeasurementDimensions, MeasurementShape, WorldPoint3D } from '../t
 export type Point2 = { x: number; y: number };
 export type RegularShape = Exclude<MeasurementShape, 'polygon_prism' | 'sectioned'>;
 export const shapeLabels: Record<MeasurementShape, string> = {
-  cuboid: 'Box', cylinder: 'Cylinder', sphere: 'Sphere', cone: 'Cone',
-  ellipsoid: 'Ellipsoid', polygon_prism: 'Outline + height', sectioned: 'Irregular / cross-sections',
+  square: 'Square',
+  rectangle: 'Rectangle',
+  circle: 'Circle',
+  cuboid: 'Box / Cuboid',
+  cylinder: 'Cylinder',
+  sphere: 'Sphere',
+  cone: 'Cone',
+  ellipsoid: 'Ellipsoid',
+  polygon_prism: 'Outline + height',
+  sectioned: 'Irregular / cross-sections',
+  polygon: 'Polygon / Irregular',
 };
 export const dimensionLabels: Record<RegularShape, string[]> = {
-  cuboid: ['Length', 'Width', 'Height'], cylinder: ['Diameter', 'Height'],
-  sphere: ['Diameter'], cone: ['Base diameter', 'Height'],
+  square: ['Side'],
+  rectangle: ['Length', 'Width'],
+  circle: ['Diameter'],
+  cuboid: ['Length', 'Width', 'Height'],
+  cylinder: ['Diameter', 'Height'],
+  sphere: ['Diameter'],
+  cone: ['Base diameter', 'Height'],
   ellipsoid: ['Length (full axis)', 'Width (full axis)', 'Height (full axis)'],
+  polygon: ['Perimeter', 'Area'],
 };
 export const formulas: Record<MeasurementShape, string> = {
-  cuboid: 'V = length × width × height', cylinder: 'V = π × (diameter / 2)² × height',
-  sphere: 'V = π × diameter³ / 6', cone: 'V = π × (diameter / 2)² × height / 3',
+  square: 'Perimeter = 4 × side, Area = side²',
+  rectangle: 'Perimeter = 2 × (length + width), Area = length × width',
+  circle: 'Circumference = 2 × π × radius, Area = π × radius²',
+  cuboid: 'V = length × width × height, Area = 2 × (lw + lh + wh)',
+  cylinder: 'V = π × radius² × height, Base Area = π × radius²',
+  sphere: 'V = 4/3 × π × radius³, Area = 4 × π × radius²',
+  cone: 'V = π × (diameter / 2)² × height / 3',
   ellipsoid: 'V = π × length × width × height / 6',
   polygon_prism: 'V = traced base area × perpendicular height',
   sectioned: 'V ≈ Σ (lower area + upper area) × layer height / 2',
+  polygon: 'Area = Shoelace contour area, Perimeter = sum of segment lengths',
 };
 
 export function positive(value: number, label: string) {
@@ -27,11 +48,134 @@ export function positive(value: number, label: string) {
 export function regularGeometry(shape: RegularShape, values: number[]) {
   if (values.length !== dimensionLabels[shape].length) throw new Error('Measure every required dimension.');
   values.forEach((value, i) => positive(value, dimensionLabels[shape][i]));
+
+  if (shape === 'square') {
+    const s = values[0];
+    const perimeterMeters = 4 * s;
+    const areaSquareMeters = s * s;
+    const dimensions: MeasurementDimensions = {
+      lengthMeters: s,
+      widthMeters: s,
+      heightMeters: 0.001,
+      unit: 'meter',
+      perimeterMeters,
+      areaSquareMeters,
+      basePerimeterMeters: perimeterMeters,
+      baseAreaSquareMeters: areaSquareMeters,
+    };
+    return { dimensions, volume: positive(s * s * 0.001, 'Volume') };
+  }
+
+  if (shape === 'rectangle') {
+    const [l, w] = values;
+    const perimeterMeters = 2 * (l + w);
+    const areaSquareMeters = l * w;
+    const dimensions: MeasurementDimensions = {
+      lengthMeters: l,
+      widthMeters: w,
+      heightMeters: 0.001,
+      unit: 'meter',
+      perimeterMeters,
+      areaSquareMeters,
+      basePerimeterMeters: perimeterMeters,
+      baseAreaSquareMeters: areaSquareMeters,
+    };
+    return { dimensions, volume: positive(l * w * 0.001, 'Volume') };
+  }
+
+  if (shape === 'circle') {
+    const d = values[0];
+    const r = d / 2;
+    const perimeterMeters = Math.PI * d;
+    const areaSquareMeters = Math.PI * r * r;
+    const dimensions: MeasurementDimensions = {
+      lengthMeters: d,
+      widthMeters: d,
+      heightMeters: 0.001,
+      unit: 'meter',
+      radiusMeters: r,
+      diameterMeters: d,
+      perimeterMeters,
+      areaSquareMeters,
+      basePerimeterMeters: perimeterMeters,
+      baseAreaSquareMeters: areaSquareMeters,
+    };
+    return { dimensions, volume: positive(areaSquareMeters * 0.001, 'Volume') };
+  }
+
+  if (shape === 'polygon') {
+    const [p, a] = values;
+    const side = p / 4;
+    const dimensions: MeasurementDimensions = {
+      lengthMeters: side,
+      widthMeters: side,
+      heightMeters: 0.001,
+      unit: 'meter',
+      perimeterMeters: p,
+      areaSquareMeters: a,
+      basePerimeterMeters: p,
+      baseAreaSquareMeters: a,
+    };
+    return { dimensions, volume: positive(a * 0.001, 'Volume') };
+  }
+
   const [a, b, c] = values;
   const lengthMeters = a;
   const widthMeters = shape === 'cuboid' || shape === 'ellipsoid' ? b : a;
   const heightMeters = shape === 'sphere' ? a : shape === 'cuboid' || shape === 'ellipsoid' ? c : b;
-  const dimensions: MeasurementDimensions = { lengthMeters, widthMeters, heightMeters, unit: 'meter' };
+
+  let radiusMeters: number | undefined;
+  let diameterMeters: number | undefined;
+  let perimeterMeters: number | undefined;
+  let basePerimeterMeters: number | undefined;
+  let baseAreaSquareMeters: number | undefined;
+  let surfaceAreaSquareMeters: number | undefined;
+  let areaSquareMeters: number | undefined;
+
+  if (shape === 'cylinder') {
+    diameterMeters = a;
+    radiusMeters = a / 2;
+    basePerimeterMeters = Math.PI * diameterMeters;
+    perimeterMeters = basePerimeterMeters;
+    baseAreaSquareMeters = Math.PI * radiusMeters ** 2;
+    surfaceAreaSquareMeters = 2 * Math.PI * radiusMeters * (radiusMeters + heightMeters);
+    areaSquareMeters = surfaceAreaSquareMeters;
+  } else if (shape === 'cuboid') {
+    basePerimeterMeters = 2 * (lengthMeters + widthMeters);
+    perimeterMeters = basePerimeterMeters;
+    baseAreaSquareMeters = lengthMeters * widthMeters;
+    surfaceAreaSquareMeters = 2 * (lengthMeters * widthMeters + lengthMeters * heightMeters + widthMeters * heightMeters);
+    areaSquareMeters = surfaceAreaSquareMeters;
+  } else if (shape === 'sphere') {
+    diameterMeters = a;
+    radiusMeters = a / 2;
+    perimeterMeters = Math.PI * diameterMeters;
+    surfaceAreaSquareMeters = 4 * Math.PI * radiusMeters ** 2;
+    areaSquareMeters = surfaceAreaSquareMeters;
+  } else if (shape === 'cone') {
+    diameterMeters = a;
+    radiusMeters = a / 2;
+    basePerimeterMeters = Math.PI * diameterMeters;
+    perimeterMeters = basePerimeterMeters;
+    baseAreaSquareMeters = Math.PI * radiusMeters ** 2;
+    const slant = Math.hypot(radiusMeters, heightMeters);
+    surfaceAreaSquareMeters = Math.PI * radiusMeters * (radiusMeters + slant);
+    areaSquareMeters = surfaceAreaSquareMeters;
+  }
+
+  const dimensions: MeasurementDimensions = {
+    lengthMeters,
+    widthMeters,
+    heightMeters,
+    unit: 'meter',
+    radiusMeters,
+    diameterMeters,
+    perimeterMeters,
+    basePerimeterMeters,
+    baseAreaSquareMeters,
+    surfaceAreaSquareMeters,
+    areaSquareMeters,
+  };
   const boxVolume = lengthMeters * widthMeters * heightMeters;
   const factor = shape === 'cuboid' ? 1 : shape === 'cylinder' ? Math.PI / 4 : shape === 'cone' ? Math.PI / 12 : Math.PI / 6;
   return { dimensions, volume: positive(boxVolume * factor, 'Volume') };
@@ -126,7 +270,17 @@ export function prismGeometry(base: WorldPoint3D[], height: number) {
   const section = horizontalSection(base);
   const flatBase = base.map(p => ({ ...p, yMeters: section.elevation }));
   const top = flatBase.map(p => ({ ...p, yMeters: p.yMeters + height }));
-  return { dimensions: bounds([...flatBase, ...top]), volume: positive(section.area * height, 'Volume'), sections: [flatBase, top] };
+  const basePerimeter = flatBase.reduce((sum, p, i) => {
+    const q = flatBase[(i + 1) % flatBase.length];
+    return sum + Math.hypot(p.xMeters - q.xMeters, p.zMeters - q.zMeters);
+  }, 0);
+  const dim = bounds([...flatBase, ...top]);
+  dim.baseAreaSquareMeters = section.area;
+  dim.basePerimeterMeters = basePerimeter;
+  dim.perimeterMeters = basePerimeter;
+  dim.surfaceAreaSquareMeters = section.area * 2 + basePerimeter * height;
+  dim.areaSquareMeters = dim.surfaceAreaSquareMeters;
+  return { dimensions: dim, volume: positive(section.area * height, 'Volume'), sections: [flatBase, top] };
 }
 
 export function sectionedGeometry(sections: WorldPoint3D[][]) {

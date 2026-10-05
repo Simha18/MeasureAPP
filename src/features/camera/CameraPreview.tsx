@@ -42,15 +42,16 @@ export const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>
         }
 
         const picture = await cameraRef.current.takePictureAsync({
-          base64: false,
+          base64: true,
           exif: false,
-          maxDownsampling: 4,
-          quality: 0.35,
+          maxDownsampling: 2,
+          quality: 0.5,
           skipProcessing: false,
           ...options,
         });
 
         return {
+          base64: picture.base64,
           height: picture.height,
           uri: picture.uri,
           width: picture.width,

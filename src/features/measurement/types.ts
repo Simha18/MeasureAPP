@@ -7,7 +7,18 @@ export const volumeUnits = [
   'cubic_foot',
 ] as const;
 
-export type MeasurementShape = 'cuboid' | 'cylinder' | 'sphere' | 'cone' | 'ellipsoid' | 'polygon_prism' | 'sectioned';
+export type MeasurementShape =
+  | 'cuboid'
+  | 'cylinder'
+  | 'sphere'
+  | 'cone'
+  | 'ellipsoid'
+  | 'polygon_prism'
+  | 'sectioned'
+  | 'square'
+  | 'rectangle'
+  | 'circle'
+  | 'polygon';
 export type MeasurementObjectType = 'box' | 'parcel' | 'carton' | 'object';
 export type MeasurementUnit = (typeof measurementUnits)[number];
 export type VolumeUnit = (typeof volumeUnits)[number];
@@ -63,6 +74,13 @@ export type MeasurementDimensions = {
   lengthMeters: number;
   unit: 'meter';
   widthMeters: number;
+  radiusMeters?: number;
+  diameterMeters?: number;
+  perimeterMeters?: number;
+  areaSquareMeters?: number;
+  surfaceAreaSquareMeters?: number;
+  basePerimeterMeters?: number;
+  baseAreaSquareMeters?: number;
 };
 
 export type VolumeMeasurement = {
@@ -92,6 +110,9 @@ export type Measurement = {
   snapshot?: MeasurementSnapshot;
   status: MeasurementStatus;
   volume: VolumeMeasurement;
+  detectedShapeConfidence?: number;
+  identifiedShapeLabel?: string;
+  shapeCategory?: '2d_planar' | '3d_volumetric';
 };
 
 export type MeasurementModel = {

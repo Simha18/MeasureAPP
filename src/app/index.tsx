@@ -13,7 +13,15 @@ import { colors, spacing, typography } from '@/theme';
 import { formatMeasurement } from '@/utils/formatMeasurement';
 import { shapeLabels } from '@/features/measurement/smart/geometry';
 
-const supportedObjects = ['Boxes', 'Round objects', 'Large outlines', 'Cross-sections'];
+const supportedObjects = [
+  'Squares',
+  'Rectangles',
+  'Cylinders',
+  'Circles',
+  'Boxes / Cuboids',
+  'Spheres',
+  'Irregular Outlines',
+];
 
 export default function HomeScreen() {
   const { measurements, settings } = useAppStore();
@@ -26,25 +34,25 @@ export default function HomeScreen() {
   return (
     <Screen>
       <View style={styles.hero}>
-        <Text style={styles.kicker}>POC Volume Finder</Text>
-        <Text style={styles.title}>Find the volume. See the shape.</Text>
+        <Text style={styles.kicker}>AI Shape & Dimension Engine</Text>
+        <Text style={styles.title}>Scan any object. Auto-detect shape & dimensions.</Text>
         <Text style={styles.description}>
-          Measure dimensions with your camera, fix points as you walk around an object,
-          or trace horizontal outlines to estimate an irregular shape.
+          Aim your camera at physical objects. The app automatically recognizes whether it is a square,
+          rectangle, cylinder, circle, or box, and derives height, width, radius, perimeter, area, and volume.
         </Text>
+        <Link href={'/auto-scan' as Href} asChild>
+          <PrimaryButton label="⚡ Smart Shape Scanner (Auto-Detect)" />
+        </Link>
         <Link href={routes.measure} asChild>
-          <PrimaryButton label="Start Measurement" />
+          <PrimaryButton label="Guided Manual Measurement" variant="secondary" />
         </Link>
         <Link href={routes.settings} asChild>
           <PrimaryButton label="Settings" variant="secondary" />
         </Link>
-        <Link href={routes.calibration as Href} asChild>
-          <PrimaryButton label="Calibration Test" variant="secondary" />
-        </Link>
       </View>
 
       <View style={styles.supportCard}>
-        <Text style={styles.cardTitle}>Supported object type</Text>
+        <Text style={styles.cardTitle}>Supported Shapes & Geometries</Text>
         <View style={styles.chips}>
           {supportedObjects.map((objectType) => (
             <Text key={objectType} style={styles.chip}>

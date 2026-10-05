@@ -5,7 +5,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import { MetricCard, OptionSelector, PrimaryButton, Screen, SectionHeader } from '@/components';
 import { routes } from '@/constants/routes';
 import {
+  getDisplayedArea,
+  getDisplayedBaseArea,
+  getDisplayedDiameter,
   getDisplayedDimensions,
+  getDisplayedPerimeter,
+  getDisplayedRadius,
+  getDisplayedSurfaceArea,
   getDisplayedVolume,
   measurementUnitOptions,
   type Measurement,
@@ -40,12 +46,21 @@ function MeasurementResult({ measurement }: { measurement: Measurement }) {
   const [error, setError] = useState('');
   const [volumeUnit, setVolumeUnit] = useState<VolumeUnit>(settings.preferredVolumeUnit);
   const dimensions = getDisplayedDimensions(measurement, lengthUnit);
+  const displayedRadius = getDisplayedRadius(measurement, lengthUnit);
+  const displayedDiameter = getDisplayedDiameter(measurement, lengthUnit);
+  const displayedPerimeter = getDisplayedPerimeter(measurement, lengthUnit);
+  const displayedArea = getDisplayedArea(measurement, lengthUnit);
+  const displayedBaseArea = getDisplayedBaseArea(measurement, lengthUnit);
+  const displayedSurfaceArea = getDisplayedSurfaceArea(measurement, lengthUnit);
   const preferredVolume = getDisplayedVolume(measurement, volumeUnit);
   const liters = getDisplayedVolume(measurement, 'liter');
   const isSaved = useMemo(
     () => measurements.some((item) => item.id === measurement.id),
     [measurement.id, measurements],
   );
+
+  const confidenceScore = measurement.detectedShapeConfidence ?? measurement.confidence.score;
+  const isPlanar = measurement.shapeCategory === '2d_planar' || measurement.shape === 'square' || measurement.shape === 'rectangle' || measurement.shape === 'circle' || measurement.shape === 'polygon';
 
   async function handleSave() {
     setSaveState('saving'); setError('');
@@ -68,56 +83,129 @@ function MeasurementResult({ measurement }: { measurement: Measurement }) {
     <Screen>
       <SectionHeader
         title="Measurement Result"
-        subtitle={`Review this ${shapeLabels[measurement.shape].toLowerCase()} estimate before saving it locally.`}
+        subtitle={`Identified: ${shapeLabels[measurement.shape]} (${Math.round(confidenceScore * 100)}% confidence)`}
       />
 
-      <MetricCard label="Estimated volume" value={formatMeasurement(preferredVolume.value, preferredVolume.unit, { maximumSignificantDigits: 5 })} />
-      <ModelPreview measurement={measurement} />
-      {measurement.model ? <View style={styles.metaCard}>
-        <Text style={styles.metaText}>{measurement.model.formula}</Text>
-        {measurement.model.assumptions.map(text => <Text key={text} style={styles.metaText}>{text}</Text>)}
-        <Text style={styles.metaText}>Dimensions below describe full extents; outline scans show world-axis bounds.</Text>
-      </View> : null}
+      {/* Shape Identification Card */}
+      <View style={styles.shapeBadgeCard}>
+        <View style={styles.badgeRow}>
+          <Text style={styles.shapeBadge}>{shapeLabels[measurement.shape].toUpperCase()}</Text>
+          <Text style={styles.confidenceBadge}>{Math.round(confidenceScore * 100)}% Confidence</Text>
+          <Text style={styles.categoryBadge}>{isPlanar ? '2D Planar' : '3D Solid'}</Text>
+        </View>
+        <Text style={styles.formulaText}>{measurement.model?.formula ?? 'Geometric Model'}</Text>
+      </View>
 
+      <ModelPreview measurement={measurement} />
+
+      {/* Primary Highlights: Volume or Area */}
+      {!isPlanar ? (
+        <MetricCard label="Estimated Volume" value={formatMeasurement(preferredVolume.value, preferredVolume.unit, { maximumSignificantDigits: 5 })} />
+      ) : displayedArea ? (
+        <MetricCard label="Calculated Surface Area" value={`${displayedArea.value.toFixed(2)} ${displayedArea.symbol}`} />
+      ) : null}
+
+      {/* Comprehensive Metric Grids */}
+      <Text style={styles.sectionTitle}>Physical Dimensions</Text>
       <View style={styles.grid}>
         <MetricCard
-          label="Length"
+          label="Length / Extent"
           value={formatMeasurement(dimensions.length, dimensions.unit, {
             maximumSignificantDigits: 5,
           })}
         />
         <MetricCard
-          label="Width"
+          label="Width / Span"
           value={formatMeasurement(dimensions.width, dimensions.unit, {
             maximumSignificantDigits: 5,
           })}
         />
-        <MetricCard
-          label="Height"
-          value={formatMeasurement(dimensions.height, dimensions.unit, {
-            maximumSignificantDigits: 5,
-          })}
-        />
-        <MetricCard
-          label="Volume"
-          value={formatMeasurement(measurement.volume.valueCubicMeters, 'cubic_meter', {
-            maximumSignificantDigits: 5,
-          })}
-        />
-        <MetricCard
-          label={`Converted Volume (${volumeUnitLabels[volumeUnit]})`}
-          value={formatMeasurement(preferredVolume.value, preferredVolume.unit, {
-            maximumSignificantDigits: 5,
-          })}
-        />
-        <MetricCard
-          label="Volume in Liters"
-          value={formatMeasurement(liters.value, liters.unit, { maximumSignificantDigits: 5 })}
-        />
+        {!isPlanar && dimensions.height > 0 ? (
+          <MetricCard
+            label="Height"
+            value={formatMeasurement(dimensions.height, dimensions.unit, {
+              maximumSignificantDigits: 5,
+            })}
+          />
+        ) : null}
       </View>
 
+      {/* Circular & Boundary Metrics */}
+      {(displayedPerimeter || displayedRadius || displayedDiameter) ? (
+        <>
+          <Text style={styles.sectionTitle}>Perimeter & Radial Metrics</Text>
+          <View style={styles.grid}>
+            {displayedPerimeter ? (
+              <MetricCard
+                label={displayedRadius ? 'Circumference (Perimeter)' : 'Boundary Perimeter'}
+                value={`${displayedPerimeter.value.toFixed(2)} ${displayedPerimeter.symbol}`}
+              />
+            ) : null}
+            {displayedRadius ? (
+              <MetricCard
+                label="Radius (r)"
+                value={`${displayedRadius.value.toFixed(2)} ${displayedRadius.symbol}`}
+              />
+            ) : null}
+            {displayedDiameter ? (
+              <MetricCard
+                label="Diameter (2r)"
+                value={`${displayedDiameter.value.toFixed(2)} ${displayedDiameter.symbol}`}
+              />
+            ) : null}
+          </View>
+        </>
+      ) : null}
+
+      {/* Surface & Area Metrics */}
+      {(displayedArea || displayedBaseArea || displayedSurfaceArea) ? (
+        <>
+          <Text style={styles.sectionTitle}>Area & Surface Metrics</Text>
+          <View style={styles.grid}>
+            {displayedBaseArea ? (
+              <MetricCard
+                label="Base / Cross-Section Area"
+                value={`${displayedBaseArea.value.toFixed(2)} ${displayedBaseArea.symbol}`}
+              />
+            ) : null}
+            {displayedSurfaceArea && !isPlanar ? (
+              <MetricCard
+                label="Total Surface Area"
+                value={`${displayedSurfaceArea.value.toFixed(2)} ${displayedSurfaceArea.symbol}`}
+              />
+            ) : null}
+          </View>
+        </>
+      ) : null}
+
+      {/* Volumetric Metrics */}
+      {!isPlanar ? (
+        <>
+          <Text style={styles.sectionTitle}>Volumetric Capacity</Text>
+          <View style={styles.grid}>
+            <MetricCard
+              label="Volume in Liters"
+              value={formatMeasurement(liters.value, liters.unit, { maximumSignificantDigits: 5 })}
+            />
+            <MetricCard
+              label={`Converted Volume (${volumeUnitLabels[volumeUnit]})`}
+              value={formatMeasurement(preferredVolume.value, preferredVolume.unit, {
+                maximumSignificantDigits: 5,
+              })}
+            />
+          </View>
+        </>
+      ) : null}
+
+      {measurement.model ? (
+        <View style={styles.metaCard}>
+          <Text style={styles.metaTitle}>Geometric Model & Rationale</Text>
+          <Text style={styles.metaFormula}>{measurement.model.formula}</Text>
+          {measurement.model.assumptions.map(text => <Text key={text} style={styles.metaText}>• {text}</Text>)}
+        </View>
+      ) : null}
+
       <View style={styles.metaCard}>
-        <Text style={styles.metaText}>{measurement.model && measurement.model.source !== 'ar_points' ? 'Accuracy: not independently verified' : `Tracking quality score: ${Math.round(measurement.confidence.score * 100)}% (not measurement accuracy)`}</Text>
         <Text style={styles.metaText}>Measurement method: {measurement.method}</Text>
         <Text style={styles.metaText}>Date/time: {new Date(measurement.measuredAt).toLocaleString()}</Text>
         <Text style={styles.metaText}>
@@ -169,6 +257,38 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.sm,
   },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  categoryBadge: {
+    backgroundColor: '#E0E7FF',
+    borderColor: '#C7D2FE',
+    borderRadius: 6,
+    borderWidth: 1,
+    color: '#3730A3',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  confidenceBadge: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC',
+    borderRadius: 6,
+    borderWidth: 1,
+    color: '#15803D',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  formulaText: {
+    color: colors.mutedText,
+    fontSize: typography.caption,
+    fontWeight: '600',
+  },
   grid: {
     gap: spacing.sm,
   },
@@ -180,15 +300,51 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     padding: spacing.md,
   },
+  metaFormula: {
+    color: colors.accent,
+    fontSize: typography.body,
+    fontWeight: '700',
+    marginBottom: spacing.xs,
+  },
   metaText: {
     color: colors.mutedText,
     fontSize: typography.body,
     lineHeight: 22,
   },
+  metaTitle: {
+    color: colors.text,
+    fontSize: typography.subtitle,
+    fontWeight: '800',
+    marginBottom: spacing.xs,
+  },
   savedText: {
     color: colors.success,
     fontSize: typography.body,
     fontWeight: '800',
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: typography.subtitle,
+    fontWeight: '800',
+    marginTop: spacing.sm,
+  },
+  shapeBadge: {
+    backgroundColor: colors.accent,
+    borderRadius: 6,
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  shapeBadgeCard: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
   },
   unitCard: {
     backgroundColor: colors.surface,

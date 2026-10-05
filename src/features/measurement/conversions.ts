@@ -66,6 +66,13 @@ export function convertVolume(value: number, fromUnit: VolumeUnit, toUnit: Volum
   return cubicMeters / cubicMetersPerUnit[toUnit];
 }
 
+export function convertArea(value: number, fromLengthUnit: MeasurementUnit, toLengthUnit: MeasurementUnit) {
+  assertNonNegative(value, 'area');
+
+  const squareMeters = value * (metersPerUnit[fromLengthUnit] ** 2);
+  return squareMeters / (metersPerUnit[toLengthUnit] ** 2);
+}
+
 export function toMeters(value: number, fromUnit: MeasurementUnit) {
   return convertLength(value, fromUnit, canonicalLengthUnit);
 }
