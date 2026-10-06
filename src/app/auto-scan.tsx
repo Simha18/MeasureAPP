@@ -121,8 +121,30 @@ function AutoScanner() {
     });
   }, []);
 
+  // Handle enabling camera permissions
+  const handleEnableCamera = useCallback(async () => {
+    try {
+      if (camera.permissionState === 'blocked') {
+        await camera.openAppSettings();
+        return;
+      }
+      const res = await camera.requestPermission();
+      if (!res.granted && !res.canAskAgain) {
+        await camera.openAppSettings();
+      }
+    } catch (err) {
+      console.warn('Failed to request camera permission:', err);
+      await camera.openAppSettings();
+    }
+  }, [camera]);
+
   // Core function to capture and analyze camera frame
   const performDetection = useCallback(async () => {
+    if (camera.permissionState !== 'granted') {
+      await handleEnableCamera();
+      return;
+    }
+
     if (!cameraRef.current || isAnalyzing) {
       return;
     }
@@ -133,8 +155,7 @@ function AutoScanner() {
     try {
       const snapshot = await cameraRef.current.captureFrame({
         base64: true,
-        maxDownsampling: 2,
-        quality: 0.5,
+        quality: 0.25,
       });
 
       if (!snapshot?.base64) {
@@ -143,12 +164,18 @@ function AutoScanner() {
 
       const targetShape = selectedShapeMode === 'auto' ? undefined : selectedShapeMode;
 
-      const result = await detectAndMeasureFromImage(snapshot.base64, {
+      const detectionPromise = detectAndMeasureFromImage(snapshot.base64, {
         aiApiKey,
         distanceMeters,
         targetShape,
         useAiVision,
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Calculation timed out (18s limit). Please tap scan to retry.')), 18000)
+      );
+
+      const result = await Promise.race([detectionPromise, timeoutPromise]);
 
       setDetectionResult(result);
     } catch (err) {
@@ -157,7 +184,7 @@ function AutoScanner() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [aiApiKey, distanceMeters, isAnalyzing, selectedShapeMode, useAiVision]);
+  }, [aiApiKey, camera.permissionState, distanceMeters, handleEnableCamera, isAnalyzing, selectedShapeMode, useAiVision]);
 
   // Continuous auto-scan loop
   useEffect(() => {
@@ -169,7 +196,7 @@ function AutoScanner() {
       if (!isAnalyzing) {
         void performDetection();
       }
-    }, 3500);
+    }, 4000);
 
     return () => clearInterval(interval);
   }, [cameraReady, isAnalyzing, isContinuousScan, performDetection]);
@@ -177,10 +204,7 @@ function AutoScanner() {
   // Initial scan once camera is ready
   const handleCameraReady = useCallback(() => {
     setCameraReady(true);
-    setTimeout(() => {
-      void performDetection();
-    }, 600);
-  }, [performDetection]);
+  }, []);
 
   // Handle switching shape mode - immediately re-evaluates dimensions if detection exists
   function handleSelectShapeMode(mode: ShapeMode) {
@@ -432,148 +456,176 @@ function AutoScanner() {
       {/* Viewfinder Canvas with live AR overlays */}
       <View style={styles.viewfinderCard}>
         {camera.permissionState === 'granted' ? (
-          <CameraPreview
-            facing={camera.facing}
-            isActive={camera.isCameraActive}
-            onCameraReady={handleCameraReady}
-            ref={cameraRef}
-            style={StyleSheet.absoluteFill}
-          />
+          <>
+            <CameraPreview
+              facing={camera.facing}
+              isActive={camera.isCameraActive}
+              onCameraReady={handleCameraReady}
+              ref={cameraRef}
+              style={StyleSheet.absoluteFill}
+            />
+
+            {/* Dynamic Detected Object Bounding Reticle */}
+            <View
+              pointerEvents="none"
+              style={[
+                styles.reticleFrame,
+                activeShapeIsCylinder && styles.reticleFrameCylinder,
+                {
+                  height: boxStyle.height,
+                  left: boxStyle.left,
+                  top: boxStyle.top,
+                  width: boxStyle.width,
+                },
+              ]}
+            >
+              <View style={[styles.reticleCorner, styles.cornerTL]} />
+              <View style={[styles.reticleCorner, styles.cornerTR]} />
+              <View style={[styles.reticleCorner, styles.cornerBL]} />
+              <View style={[styles.reticleCorner, styles.cornerBR]} />
+
+              {/* Cylinder Top and Bottom Elliptical Cap Guides */}
+              {activeShapeIsCylinder ? (
+                <>
+                  <View style={styles.cylinderCapTop} />
+                  <View style={styles.cylinderCapBottom} />
+                  <View style={styles.cylinderCenterAxis} />
+                </>
+              ) : null}
+
+              {/* Animated Laser Scan Line */}
+              <Animated.View
+                style={[
+                  styles.laserLine,
+                  {
+                    transform: [{ translateY: laserTranslateY }],
+                  },
+                ]}
+              />
+
+              {/* Center Target Crosshair */}
+              <View style={styles.centerTarget}>
+                <View style={styles.centerDot} />
+              </View>
+
+              {/* Object Name & Shape Tag */}
+              <View style={styles.detectedBadge}>
+                <View
+                  style={[
+                    styles.statusIndicator,
+                    { backgroundColor: isAnalyzing ? '#F59E0B' : '#22C55E' },
+                  ]}
+                />
+                <Text style={styles.detectedText}>
+                  {isAnalyzing
+                    ? 'CALCULATING DIMENSIONS...'
+                    : detectionResult
+                      ? `${detectionResult.shapeLabel.toUpperCase()} · ${(detectionResult.confidence * 100).toFixed(0)}%`
+                      : activeShapeIsCylinder
+                        ? 'CYLINDER / BOTTLE MODE'
+                        : 'AIM AT OBJECT'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Live Dimension HUD Overlays */}
+            {detectionResult ? (
+              <View pointerEvents="none" style={styles.hudOverlay}>
+                <View style={styles.hudRow}>
+                  {activeShapeIsCylinder ? (
+                    <>
+                      <View style={[styles.hudPill, styles.hudPillHighlight]}>
+                        <Text style={styles.hudPillLabel}>DIAMETER (Ø)</Text>
+                        <Text style={styles.hudPillValue}>
+                          {formatLen(detectionResult.diameterMeters ?? detectionResult.dimensions.widthMeters)}
+                        </Text>
+                      </View>
+                      <View style={[styles.hudPill, styles.hudPillHighlight]}>
+                        <Text style={styles.hudPillLabel}>HEIGHT (H)</Text>
+                        <Text style={styles.hudPillValue}>
+                          {formatLen(detectionResult.dimensions.heightMeters)}
+                        </Text>
+                      </View>
+                      <View style={[styles.hudPill, styles.hudPillHighlight]}>
+                        <Text style={styles.hudPillLabel}>LIQUID VOL</Text>
+                        <Text style={styles.hudPillValue}>
+                          {formatVol(detectionResult.volumeCubicMeters)}
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.hudPill}>
+                        <Text style={styles.hudPillLabel}>WIDTH</Text>
+                        <Text style={styles.hudPillValue}>
+                          {formatLen(detectionResult.dimensions.widthMeters)}
+                        </Text>
+                      </View>
+                      <View style={styles.hudPill}>
+                        <Text style={styles.hudPillLabel}>LENGTH</Text>
+                        <Text style={styles.hudPillValue}>
+                          {formatLen(detectionResult.dimensions.lengthMeters)}
+                        </Text>
+                      </View>
+                      {detectionResult.dimensions.heightMeters > 0 ? (
+                        <View style={styles.hudPill}>
+                          <Text style={styles.hudPillLabel}>HEIGHT</Text>
+                          <Text style={styles.hudPillValue}>
+                            {formatLen(detectionResult.dimensions.heightMeters)}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </>
+                  )}
+                </View>
+              </View>
+            ) : null}
+          </>
         ) : (
           <View style={styles.simulatedCameraBackground}>
             <View style={styles.gridOverlay} />
-            <Text style={styles.cameraNoteText}>Camera Permission Required</Text>
-            <PrimaryButton
-              label="Enable Camera"
-              onPress={() => camera.requestPermission()}
-              style={{ marginTop: 12 }}
-            />
-          </View>
-        )}
-
-        {/* Dynamic Detected Object Bounding Reticle */}
-        <View
-          style={[
-            styles.reticleFrame,
-            activeShapeIsCylinder && styles.reticleFrameCylinder,
-            {
-              height: boxStyle.height,
-              left: boxStyle.left,
-              top: boxStyle.top,
-              width: boxStyle.width,
-            },
-          ]}
-        >
-          <View style={[styles.reticleCorner, styles.cornerTL]} />
-          <View style={[styles.reticleCorner, styles.cornerTR]} />
-          <View style={[styles.reticleCorner, styles.cornerBL]} />
-          <View style={[styles.reticleCorner, styles.cornerBR]} />
-
-          {/* Cylinder Top and Bottom Elliptical Cap Guides */}
-          {activeShapeIsCylinder ? (
-            <>
-              <View style={styles.cylinderCapTop} />
-              <View style={styles.cylinderCapBottom} />
-              <View style={styles.cylinderCenterAxis} />
-            </>
-          ) : null}
-
-          {/* Animated Laser Scan Line */}
-          <Animated.View
-            style={[
-              styles.laserLine,
-              {
-                transform: [{ translateY: laserTranslateY }],
-              },
-            ]}
-          />
-
-          {/* Center Target Crosshair */}
-          <View style={styles.centerTarget}>
-            <View style={styles.centerDot} />
-          </View>
-
-          {/* Object Name & Shape Tag */}
-          <View style={styles.detectedBadge}>
-            <View
-              style={[
-                styles.statusIndicator,
-                { backgroundColor: isAnalyzing ? '#F59E0B' : '#22C55E' },
-              ]}
-            />
-            <Text style={styles.detectedText}>
-              {isAnalyzing
-                ? 'CALCULATING DIMENSIONS...'
-                : detectionResult
-                  ? `${detectionResult.shapeLabel.toUpperCase()} · ${(detectionResult.confidence * 100).toFixed(0)}%`
-                  : activeShapeIsCylinder
-                    ? 'CYLINDER / BOTTLE MODE'
-                    : 'AIM AT OBJECT'}
+            <Text style={styles.cameraPermissionIcon}>📷</Text>
+            <Text style={styles.cameraPermissionTitle}>
+              {camera.permissionState === 'blocked'
+                ? 'Camera Access Blocked'
+                : 'Camera Permission Required'}
             </Text>
-          </View>
-        </View>
-
-        {/* Live Dimension HUD Overlays */}
-        {detectionResult ? (
-          <View style={styles.hudOverlay}>
-            <View style={styles.hudRow}>
-              {activeShapeIsCylinder ? (
-                <>
-                  <View style={[styles.hudPill, styles.hudPillHighlight]}>
-                    <Text style={styles.hudPillLabel}>DIAMETER (Ø)</Text>
-                    <Text style={styles.hudPillValue}>
-                      {formatLen(detectionResult.diameterMeters ?? detectionResult.dimensions.widthMeters)}
-                    </Text>
-                  </View>
-                  <View style={[styles.hudPill, styles.hudPillHighlight]}>
-                    <Text style={styles.hudPillLabel}>HEIGHT (H)</Text>
-                    <Text style={styles.hudPillValue}>
-                      {formatLen(detectionResult.dimensions.heightMeters)}
-                    </Text>
-                  </View>
-                  <View style={[styles.hudPill, styles.hudPillHighlight]}>
-                    <Text style={styles.hudPillLabel}>LIQUID VOL</Text>
-                    <Text style={styles.hudPillValue}>
-                      {formatVol(detectionResult.volumeCubicMeters)}
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <View style={styles.hudPill}>
-                    <Text style={styles.hudPillLabel}>WIDTH</Text>
-                    <Text style={styles.hudPillValue}>
-                      {formatLen(detectionResult.dimensions.widthMeters)}
-                    </Text>
-                  </View>
-                  <View style={styles.hudPill}>
-                    <Text style={styles.hudPillLabel}>LENGTH</Text>
-                    <Text style={styles.hudPillValue}>
-                      {formatLen(detectionResult.dimensions.lengthMeters)}
-                    </Text>
-                  </View>
-                  {detectionResult.dimensions.heightMeters > 0 ? (
-                    <View style={styles.hudPill}>
-                      <Text style={styles.hudPillLabel}>HEIGHT</Text>
-                      <Text style={styles.hudPillValue}>
-                        {formatLen(detectionResult.dimensions.heightMeters)}
-                      </Text>
-                    </View>
-                  ) : null}
-                </>
-              )}
+            <Text style={styles.cameraPermissionSubtext}>
+              {camera.permissionState === 'blocked'
+                ? 'Camera access is blocked in device settings. Open settings to grant camera access and return to the app.'
+                : 'Auto Scan requires camera access to preview objects and compute physical dimensions.'}
+            </Text>
+            <View style={styles.permissionButtonRow}>
+              <PrimaryButton
+                disabled={camera.permissionState === 'loading'}
+                label={camera.permissionState === 'blocked' ? 'Open Settings' : 'Enable Camera'}
+                onPress={() => void handleEnableCamera()}
+              />
+              {camera.permissionState === 'blocked' ? (
+                <PrimaryButton
+                  label="Retry"
+                  onPress={() => void camera.refreshPermission()}
+                  variant="secondary"
+                />
+              ) : null}
             </View>
           </View>
-        ) : null}
+        )}
       </View>
 
       {/* Main Scan Trigger Controls */}
       <View style={styles.controlsRow}>
         <View style={{ flex: 1 }}>
           <PrimaryButton
-            disabled={isAnalyzing}
-            label={isAnalyzing ? 'Scanning Camera Frame…' : '⚡ Auto Scan & Measure'}
-            onPress={() => void performDetection()}
+            label={isAnalyzing ? 'Scanning… (Tap to Cancel)' : '⚡ Auto Scan & Measure'}
+            onPress={() => {
+              if (isAnalyzing) {
+                setIsAnalyzing(false);
+                setErrorMessage('Scan cancelled.');
+              } else {
+                void performDetection();
+              }
+            }}
           />
         </View>
         <Pressable
@@ -1307,7 +1359,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#0B132B',
     height: '100%',
     justifyContent: 'center',
+    padding: spacing.md,
     width: '100%',
+    zIndex: 10,
+  },
+  cameraPermissionIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  cameraPermissionTitle: {
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  cameraPermissionSubtext: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 16,
+    maxWidth: 280,
+    textAlign: 'center',
+  },
+  permissionButtonRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
   },
   statusIndicator: {
     borderRadius: 4,

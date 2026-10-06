@@ -41,14 +41,20 @@ export const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>
           return undefined;
         }
 
-        const picture = await cameraRef.current.takePictureAsync({
+        const capturePromise = cameraRef.current.takePictureAsync({
           base64: true,
           exif: false,
-          maxDownsampling: 2,
-          quality: 0.5,
+          quality: 0.25,
+          shutterSound: false,
           skipProcessing: false,
           ...options,
         });
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Camera capture timed out (7s limit)')), 7000)
+        );
+
+        const picture = await Promise.race([capturePromise, timeoutPromise]);
 
         return {
           base64: picture.base64,

@@ -52,8 +52,6 @@ export async function identifyObjectWithAiVision(
   // Strip potential data URL prefix
   const cleanBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
-
   const prompt = `You are a precision computer vision, spatial AI, and 3D geometric measurement engine.
 Analyze this photo taken by a smartphone camera. Identify the primary foreground object or container in the frame.
 Look closely at the object's real-world identity, category, and standard physical dimensions (e.g. shipping box, soda can, laptop, water bottle, phone, book, carton).
@@ -70,17 +68,21 @@ Return a STRICT JSON response with no markdown fences, no preamble, and no expla
   "rationale": "Short 1-sentence geometric explanation"
 }`;
 
+  // Prefer the primary flash model first; lite often stalls on vision payloads.
   const CANDIDATE_MODELS = [
-    'gemini-flash-latest',
+    'gemini-3.8-flash',
     'gemini-3.5-flash',
     'gemini-flash-lite-latest',
-    'gemini-3.8-flash',
   ];
+  const REQUEST_TIMEOUT_MS = 25000;
 
   let candidateText: string | undefined;
 
   for (const modelName of CANDIDATE_MODELS) {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
     try {
       console.log(`[AI Vision] Sending camera frame to model: ${modelName}...`);
       const startTime = Date.now();
@@ -109,18 +111,15 @@ Return a STRICT JSON response with no markdown fences, no preamble, and no expla
           'Content-Type': 'application/json',
         },
         method: 'POST',
+        signal: controller.signal,
       });
 
       const elapsedMs = Date.now() - startTime;
 
       if (!response.ok) {
-        const errText = await response.text();
         console.warn(`[AI Vision] ${modelName} returned HTTP ${response.status} (${elapsedMs}ms). Checking fallback...`);
-        // If 503 (high demand) or 429 (rate limit), continue to next model
-        if (response.status === 503 || response.status === 429 || response.status === 404) {
-          continue;
-        }
-        return undefined;
+        // If 503, 429, 404, or 400 continue to next model
+        continue;
       }
 
       const data = await response.json();
@@ -129,18 +128,33 @@ Return a STRICT JSON response with no markdown fences, no preamble, and no expla
         console.log(`[AI Vision] Success from ${modelName} in ${elapsedMs}ms`);
         break;
       }
-    } catch (err) {
-      console.warn(`[AI Vision] Network error on ${modelName}:`, err);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const isAbort =
+        (err instanceof Error && err.name === 'AbortError') ||
+        errMsg.toLowerCase().includes('aborted') ||
+        errMsg.toLowerCase().includes('canceled') ||
+        errMsg.toLowerCase().includes('cancelled');
+      if (isAbort) {
+        console.warn(
+          `[AI Vision] Request to ${modelName} timed out (${REQUEST_TIMEOUT_MS / 1000}s limit). Trying fallback...`,
+        );
+      } else {
+        console.warn(`[AI Vision] Network error on ${modelName}:`, errMsg);
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
   if (!candidateText) {
-    console.error('[AI Vision] All Gemini candidate models failed or returned empty');
+    console.warn('[AI Vision] All Gemini candidate models failed or returned empty. Falling back to local vision.');
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(candidateText);
+    const raw = JSON.parse(candidateText);
+    const parsed = Array.isArray(raw) ? raw[0] : raw;
 
     // Validate shape
     const validShapes: MeasurementShape[] = [
@@ -156,29 +170,43 @@ Return a STRICT JSON response with no markdown fences, no preamble, and no expla
       'circle',
     ];
 
-    const shape = validShapes.includes(parsed.shape) ? (parsed.shape as MeasurementShape) : 'cuboid';
+    const shape = validShapes.includes(parsed?.shape) ? (parsed.shape as MeasurementShape) : 'cuboid';
     const shapeCategory =
-      parsed.shapeCategory === '2d_planar' || parsed.shapeCategory === '3d_volumetric'
+      parsed?.shapeCategory === '2d_planar' || parsed?.shapeCategory === '3d_volumetric'
         ? parsed.shapeCategory
         : shape === 'circle' || shape === 'square' || shape === 'rectangle'
           ? '2d_planar'
           : '3d_volumetric';
 
+    let bX = Number(parsed?.boundingBox?.x) || 0.2;
+    let bY = Number(parsed?.boundingBox?.y) || 0.2;
+    let bW = Number(parsed?.boundingBox?.width) || 0.6;
+    let bH = Number(parsed?.boundingBox?.height) || 0.6;
+
+    // Normalize coordinates if the model returned pixel numbers (e.g., > 1.5)
+    if (bW > 1.5 || bH > 1.5 || bX > 1.5 || bY > 1.5) {
+      const maxDim = Math.max(bX + bW, bY + bH, 1000);
+      bX = bX / maxDim;
+      bY = bY / maxDim;
+      bW = bW / maxDim;
+      bH = bH / maxDim;
+    }
+
     const result: AiObjectDetectionResult = {
       boundingBox: {
-        height: Math.max(0.05, Math.min(0.95, Number(parsed.boundingBox?.height) || 0.4)),
-        width: Math.max(0.05, Math.min(0.95, Number(parsed.boundingBox?.width) || 0.4)),
-        x: Math.max(0.01, Math.min(0.9, Number(parsed.boundingBox?.x) || 0.3)),
-        y: Math.max(0.01, Math.min(0.9, Number(parsed.boundingBox?.y) || 0.3)),
+        height: Math.max(0.05, Math.min(0.95, bH)),
+        width: Math.max(0.05, Math.min(0.95, bW)),
+        x: Math.max(0.01, Math.min(0.9, bX)),
+        y: Math.max(0.01, Math.min(0.9, bY)),
       },
-      confidence: Math.max(0.5, Math.min(0.99, Number(parsed.confidence) || 0.9)),
+      confidence: Math.max(0.5, Math.min(0.99, Number(parsed?.confidence) || 0.9)),
       dimensionsCm: {
-        height: Math.max(0.1, Number(parsed.dimensionsCm?.height) || 5),
-        length: Math.max(0.1, Number(parsed.dimensionsCm?.length) || 10),
-        width: Math.max(0.1, Number(parsed.dimensionsCm?.width) || 10),
+        height: Math.max(0.1, Number(parsed?.dimensionsCm?.height) || 5),
+        length: Math.max(0.1, Number(parsed?.dimensionsCm?.length) || 10),
+        width: Math.max(0.1, Number(parsed?.dimensionsCm?.width) || 10),
       },
-      objectName: String(parsed.objectName || 'Detected Object'),
-      rationale: String(parsed.rationale || 'AI identified object and shape properties from camera view.'),
+      objectName: String(parsed?.objectName || 'Detected Object'),
+      rationale: String(parsed?.rationale || 'AI identified object and shape properties from camera view.'),
       shape,
       shapeCategory,
     };
