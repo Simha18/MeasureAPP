@@ -904,7 +904,7 @@ private final class ArKitMeasurementController: NSObject, ARSessionDelegate {
       return 0
     }
 
-    Int((normalizedValue * CGFloat(maxValue)).rounded(.down)).clamped(to: 0...(maxValue - 1))
+    return Int((normalizedValue * CGFloat(maxValue)).rounded(.down)).clamped(to: 0...(maxValue - 1))
   }
 
   private func upsertPlaneAnchors(anchors: [ARAnchor], shouldEmitNewPlanes: Bool) {
