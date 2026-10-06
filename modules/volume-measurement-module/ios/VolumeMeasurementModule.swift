@@ -131,10 +131,6 @@ public class VolumeMeasurementModule: Module {
       Prop("active") { (view: VolumeMeasurementArView, active: Bool) in
         view.setActive(active)
       }
-
-      OnViewDestroys { (view: VolumeMeasurementArView) in
-        view.destroy()
-      }
     }
   }
 }
@@ -152,6 +148,10 @@ private final class VolumeMeasurementArView: ExpoView {
     sceneView.backgroundColor = .black
     addSubview(sceneView)
     ArKitMeasurementController.shared.attachView(self)
+  }
+
+  deinit {
+    destroy()
   }
 
   override func layoutSubviews() {
