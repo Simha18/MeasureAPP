@@ -3,6 +3,7 @@
 *.env text eol=lf
 *.swift text eol=lf
 *.podspec text eol=lf
+*.pbxproj text eol=lf
 **/.xcode.env text eol=lf
 ios/.xcode.env text eol=lf
 *.rb text eol=lf

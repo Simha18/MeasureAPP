@@ -234,7 +234,7 @@
 			);
 			outputPaths = (
 			);
-			shellPath = /bin/sh;
+			shellPath = /bin/bash;
 			shellScript = "# Strip dev-launcher-specific local network permission keys from non-Debug builds
 # This only removes _expo._tcp Bonjour services and the dev-launcher usage description.
 # Other Bonjour services and custom descriptions are preserved for production use.
@@ -248,11 +248,13 @@ if [ \"$CONFIGURATION\" != \"Debug\" ]; then
       COUNT=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices\" \"$PLIST_PATH\" 2>/dev/null | grep \"^    \" | wc -l | tr -d ' ')
 
       # Remove _expo._tcp
-      for ((i=COUNT-1; i>=0; i--)); do
+      i=$((COUNT - 1))
+      while [ \"$i\" -ge 0 ]; do
         SERVICE=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices:$i\" \"$PLIST_PATH\" 2>/dev/null || echo \"\")
         if echo \"$SERVICE\" | grep -q \"_expo._tcp\"; then
           /usr/libexec/PlistBuddy -c \"Delete :NSBonjourServices:$i\" \"$PLIST_PATH\" 2>/dev/null || true
         fi
+        i=$((i - 1))
       done
 
       # If the array is now empty, remove it entirely
