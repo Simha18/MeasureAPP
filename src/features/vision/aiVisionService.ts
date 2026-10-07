@@ -68,13 +68,15 @@ Return a STRICT JSON response with no markdown fences, no preamble, and no expla
   "rationale": "Short 1-sentence geometric explanation"
 }`;
 
-  // Prefer the primary flash model first; lite often stalls on vision payloads.
+  // Prefer fast, reliable multimodal flash models
   const CANDIDATE_MODELS = [
-    'gemini-3.8-flash',
-    'gemini-3.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash-lite',
     'gemini-flash-lite-latest',
   ];
-  const REQUEST_TIMEOUT_MS = 25000;
+  const REQUEST_TIMEOUT_MS = 60000;
 
   let candidateText: string | undefined;
 

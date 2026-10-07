@@ -171,13 +171,22 @@ function AutoScanner() {
         useAiVision,
       });
 
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Calculation timed out (18s limit). Please tap scan to retry.')), 18000)
-      );
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('Calculation timed out (5m limit). Please tap scan to retry.')),
+          5 * 60 * 1000
+        );
+      });
 
-      const result = await Promise.race([detectionPromise, timeoutPromise]);
-
-      setDetectionResult(result);
+      try {
+        const result = await Promise.race([detectionPromise, timeoutPromise]);
+        setDetectionResult(result);
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Visual inspection failed.';
       setErrorMessage(msg);
